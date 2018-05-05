@@ -12,6 +12,8 @@ import re
 import six
 import warnings
 import sys
+import inspect
+
 
 import numpy as np
 import scipy.stats.distributions
@@ -19,11 +21,13 @@ import sklearn.base
 import sklearn.model_selection
 # Necessary to have signature available in python 2.7
 from sklearn.utils.fixes import signature
+from keras.layers import Dense, Dropout
 
 import openml
 from openml.flows import OpenMLFlow
 from openml.exceptions import PyOpenMLError
 
+DEBUG=True
 
 if sys.version_info >= (3, 5):
     from json.decoder import JSONDecodeError
@@ -34,18 +38,51 @@ else:
 DEPENDENCIES_PATTERN = re.compile(
     '^(?P<name>[\w\-]+)((?P<operation>==|>=|>)(?P<version>(\d+\.)?(\d+\.)?(\d+)?(dev)?[0-9]*))?$')
 
-def tes_function():
-    print("skrapapapa")
-
+def tes_serialize_seq(o):
+    dummydict=OrderedDict([('description',None),('data_type',None)]  )
+    a,b,c,d=_extract_information_from_model(o)
+    for key in b['build_fn'].keys():
+        print(key)
+        #c[key]=dummydict
+    return a,b,c,d
+    
 def sklearn_to_flow(o, parent_model=None):
     # TODO: assert that only on first recursion lvl `parent_model` can be None
 
-    if _is_estimator(o):
+    if _is_sequential_wrapper(o):
+        #o.sk_params['model']=o.build_fn().get_config()
+        #print(o.sk_params)
+        # TODO: explain what type of parameter is here
+        rval = _serialize_model(o) 
+
+    elif _is_estimator(o):
         # is the main model or a submodel
         rval = _serialize_model(o)
-    elif _is_sequential(o):
+    
+
+    elif _is_sequential_function(o):
         # TODO: explain what type of parameter is here
-        rval = _serialize_sequential_model(o)    
+        #rval = _serialize_sequential_model(o)
+        submodel=o()
+        #tempfn=o['build_fn']
+        #'layer'+str(layer_id)
+        
+        #rval=[() for i in submodel.get_config()]
+        #rval['steps']={}
+        #for layer_id,layer in enumerate(submodel.get_config()):
+        #    if(layer['class_name']=='Dense'):
+        #        rval[layer_id]=('dense',Dense.from_config(layer['config']))
+        #    elif(layer['class_name']=='Dropout'):
+        #        rval[layer_id]=('dropout',Dropout.from_config(layer['config']))
+        #tp=tuple(['steps',rval])
+        ###rval= sklearn_to_flow(translate_seq(submodel),parent_model)
+        return (inspect.getsource(o))[:2000]
+        #rval= _serialize_sequential_model(submodel)
+
+    elif _is_layer(o):
+        rval = _serialize_sequential_model(o) 
+        #rval=sklearn_to_flow(o.get_config())
+        #return rval
     elif isinstance(o, (list, tuple)):
         # TODO: explain what type of parameter is here
         rval = [sklearn_to_flow(element, parent_model) for element in o]
@@ -79,6 +116,7 @@ def sklearn_to_flow(o, parent_model=None):
     # built-in or functool.partials in a pipeline
     elif inspect.isfunction(o):
         # TODO: explain what type of parameter is here
+        print("fungsi")
         rval = serialize_function(o)
     elif _is_cross_validator(o):
         # TODO: explain what type of parameter is here
@@ -98,8 +136,18 @@ def _is_estimator(o):
 def _is_cross_validator(o):
     return isinstance(o, sklearn.model_selection.BaseCrossValidator)
 
-def _is_sequential(o):
-    return isinstance(o, keras.models.Sequential)
+def _is_sequential_function(o):
+    return inspect.isfunction(o) and (isinstance(o(), keras.models.Sequential) or isinstance(o(), keras.models.Model))
+
+def _is_sequential_wrapper(o):
+    return isinstance(o, keras.wrappers.scikit_learn.KerasClassifier)
+
+def _is_layer(o):
+    try:
+        return 'keras.layers' in str(o.__class__)
+    except Exception:
+        return false
+
 
 
 def flow_to_sklearn(o, **kwargs):
@@ -156,6 +204,8 @@ def flow_to_sklearn(o, **kwargs):
         rval = o
     elif isinstance(o, OpenMLFlow):
         rval = _deserialize_model(o, **kwargs)
+    #elif isinstance(o, keras.models.Sequential):
+    #    rval = _deserialize_seq_model(o, **kwargs)    
     else:
         raise TypeError(o)
 
@@ -232,11 +282,14 @@ def _serialize_model(model):
                       # TODO fill in dependencies!
                       dependencies=dependencies)
 
+    #global DEBUG
+    if(DEBUG):
+        print("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}".format(flow.name,flow.class_name,flow.description,flow.model,flow.components,flow.parameters,parameters_meta_info,flow.external_version,flow.tags,flow.language,flow.dependencies))
     return flow
 
 def _serialize_sequential_model(model):
     """Create an OpenMLFlow.
-
+    
     Calls `sklearn_to_flow` recursively to properly serialize the
     parameters to strings and the components (other models) to OpenMLFlows.
 
@@ -249,11 +302,14 @@ def _serialize_sequential_model(model):
     OpenMLFlow
 
     """
-
+    print('seq')
     # Get all necessary information about the model objects itself
     parameters, parameters_meta_info, sub_components, sub_components_explicit =\
         _extract_information_from_seq(model)
+    if(DEBUG):
+        print(subcomponents)    
 
+    #print("{},{},{},{}".format(parameters, parameters_meta_info,sub_components, sub_components_explicit))
     # Check that a component does not occur multiple times in a flow as this
     # is not supported by OpenML
     _check_multiple_occurence_of_component_in_flow(model, sub_components)
@@ -283,6 +339,7 @@ def _serialize_sequential_model(model):
                     'numpy>=1.6.1', 'scipy>=0.9']
     dependencies = '\n'.join(dependencies)
 
+
     flow = OpenMLFlow(name=name,
                       class_name=class_name,
                       description='Automatically created scikit-learn flow.',
@@ -303,7 +360,7 @@ def _serialize_sequential_model(model):
                       language='English',
                       # TODO fill in dependencies!
                       dependencies=dependencies)
-
+    print("{},{},{},{},{},{},{},{},{},{},{}".format(flow.name,flow.class_name,flow.description,flow.model,flow.components,flow.parameters,parameters_meta_info,flow.external_version,flow.tags,flow.language,flow.dependencies))
     return flow
 
 def _get_external_version_string(model, sub_components):
@@ -330,11 +387,16 @@ def _get_external_version_string(model, sub_components):
 
 
 def _check_multiple_occurence_of_component_in_flow(model, sub_components):
+    #print(model)
+    #print('--------')
+    #print(sub_components)
+    #print('==========')
     to_visit_stack = []
     to_visit_stack.extend(sub_components.values())
     known_sub_components = set()
     while len(to_visit_stack) > 0:
         visitee = to_visit_stack.pop()
+        print(visitee)
         if visitee.name in known_sub_components:
             raise ValueError('Found a second occurence of component %s when '
                              'trying to serialize %s.' % (visitee.name, model))
@@ -343,6 +405,17 @@ def _check_multiple_occurence_of_component_in_flow(model, sub_components):
             to_visit_stack.extend(visitee.components.values())
 
 
+def translate_seq(model): #return list of models
+    #steps=[]
+    steps={}
+    for layer_number,submodel in enumerate(model.get_config()[0:2]):
+        layer_order="layer{}".format(layer_number)
+        steps[layer_order]=[(i,j)for i,j in submodel.items()]
+        #if(submodel['class_name']=='Dense'):
+        #    steps.append(("layer{}".format(layer_number),Dense.from_config(submodel['config'])))
+        #elif(submodel['class_name']=='Dropout'):
+        #    steps.append(("layer{}".format(layer_number),Dropout.from_config(submodel['config'])))
+    return steps
 def _extract_information_from_model(model):
     # This function contains four "global" states and is quite long and
     # complicated. If it gets to complicated to ensure it's correctness,
@@ -357,14 +430,24 @@ def _extract_information_from_model(model):
     parameters = OrderedDict()
     parameters_meta_info = OrderedDict()
 
-    model_parameters = model.get_params(deep=False)
+    #if(isinstance(model, keras.models.Sequential)):
+    #    model_parameters = model.get_config()
+    #else:
+    #if(hasattr(model_parameters, 'build_fn')):
+    #    model_parameters[build_fn]=model.build_fn().get_config()
+    #global seq_flag
+    #if(not seq_flag):
+    #    model_parameters[model]=model.build_fn().get_config()
+    #    seq_flag=True
+
+    model_parameters = model.get_params(deep=True)
     #print("=================debug line start")
     #print("model params=".format(model_parameters))
     #print(model_parameters)
     #print("=================debug line end")
-    for k, v in sorted(model_parameters.items(), key=lambda t: t[0]):
+    for k, v in model_parameters.items():#sorted(model_parameters.items(), key=lambda t: t[0]):
         rval = sklearn_to_flow(v, model)
-        #print('rval={}'.format(rval))
+        #print('rval={}, k={}, v={}'.format(rval,k,v))
         
 
         if (isinstance(rval, (list, tuple)) and len(rval) > 0 and
@@ -420,7 +503,6 @@ def _extract_information_from_model(model):
             parameters[k] = parameter_value
 
         elif isinstance(rval, OpenMLFlow):
-
             # A subcomponent, for example the base model in
             # AdaBoostClassifier
             sub_components[k] = rval
@@ -447,7 +529,7 @@ def _extract_information_from_model(model):
         parameters_meta_info[k] = OrderedDict((('description', None),
                                                ('data_type', None)))
 
-    print("output=\n{}\n\n {}\n\n {}\n\n {}\n\n".format(parameters, parameters_meta_info, sub_components, sub_components_explicit))
+    #print("output=\n{}\n\n {}\n\n {}\n\n {}\n\n".format(parameters, parameters_meta_info, sub_components, sub_components_explicit))
 
     return parameters, parameters_meta_info, sub_components, sub_components_explicit
 
@@ -465,22 +547,24 @@ def _extract_information_from_seq(model):
     sub_components_explicit = set()
     parameters = OrderedDict()
     parameters_meta_info = OrderedDict()
-
     for i in range(len(model.get_config())):
-        model_parameters = model.get_config()[i]['config']
+        model_parameters = model.get_config()
         #print("model params=".format(model_parameters))
         #print(model_parameters)
     
         for k, v in sorted(model_parameters.items(), key=lambda t: t[0]):
             rval = sklearn_to_flow(v, model)
-            #print('rval={}'.format(rval))
+            #print('rval={}, k={}, v={}'.format(rval,k,v))
+
+            #if(isinstance(rval,dict)):
+            #   rval=[rval]#[(k, v) for k, v in rval.items()]
+            #print('rval={}, i={}'.format(rval,i))
             if (isinstance(rval, (list, tuple)) and len(rval) > 0 and
                     isinstance(rval[0], (list, tuple)) and
                     [type(rval[0]) == type(rval[i]) for i in range(len(rval))]):
-
                 # Steps in a pipeline or feature union, or base classifiers in voting classifier
                 parameter_value = list()
-                reserved_keywords = set(model.get_params(deep=False).keys())
+                reserved_keywords = set(model.get_config().keys())
 
                 for sub_component_tuple in rval:
                     identifier, sub_component = sub_component_tuple
@@ -525,7 +609,7 @@ def _extract_information_from_seq(model):
                 # deserialization
                 parameter_value = json.dumps(parameter_value)
                 parameters[k] = parameter_value
-
+            
             elif isinstance(rval, OpenMLFlow):
 
                 # A subcomponent, for example the base model in
@@ -597,6 +681,47 @@ def _deserialize_model(flow, **kwargs):
 
     return model_class(**parameter_dict)
 
+def _deserialize_seq_model(flow, **kwargs):
+
+    model_name = flow.class_name
+    _check_dependencies(flow.dependencies)
+
+    parameters = flow.parameters
+    components = flow.components
+    parameter_dict = OrderedDict()
+
+    # Do a shallow copy of the components dictionary so we can remove the
+    # components from this copy once we added them into the pipeline. This
+    # allows us to not consider them any more when looping over the
+    # components, but keeping the dictionary of components untouched in the
+    # original components dictionary.
+    components_ = copy.copy(components)
+
+    for name in parameters:
+        value = parameters.get(name)
+        rval = flow_to_sklearn(value, components=components_)
+        parameter_dict[name] = rval
+
+    for name in components:
+        if name in parameter_dict:
+            continue
+        if name not in components_:
+            continue
+        value = components[name]
+        rval = flow_to_sklearn(value)
+        parameter_dict[name] = rval
+
+    module_name = model_name.rsplit('.', 1)
+    try:
+        model_class = getattr(importlib.import_module(module_name[0]),
+                              module_name[1])
+    except:
+        warnings.warn('Cannot create model %s for flow.' % model_name)
+        return None
+
+    return model_class(**parameter_dict)
+
+
 
 def _check_dependencies(dependencies):
     if not dependencies:
@@ -641,7 +766,6 @@ def serialize_type(o):
     ret['oml-python:serialized_object'] = 'type'
     ret['value'] = mapping[o]
     return ret
-
 
 def deserialize_type(o, **kwargs):
     mapping = {'float': float,
@@ -688,12 +812,48 @@ def deserialize_rv_frozen(o, **kwargs):
 
     return dist
 
+def serialize_sequence(o):
+    ##TODO Irfan
+    ret = OrderedDict()
+    ret['oml-python:serialized_object'] = 'sequence'
+    ret['value'] = o
+    return ret
+
+def deserialize_sequence(o):
+    ##TODO Irfan
+    build_fn = o['build_fn']
+    verbose = o['verbose']
+    epoch = o['epoch']
+    bacth_size = o['batch_size']
+    
+    module_name = dist_name.rsplit('.', 1)
+    try:
+        rv_class = getattr(importlib.import_module(module_name[0]),
+                           module_name[1])
+    except:
+        warnings.warn('Cannot create model %s for flow.' % dist_name)
+        return None
+
+    dist = scipy.stats.distributions.rv_frozen(rv_class(), *args, **kwds)
+    dist.a = a
+    dist.b = b
 
 def serialize_function(o):
     name = o.__module__ + '.' + o.__name__
     ret = OrderedDict()
     ret['oml-python:serialized_object'] = 'function'
-    ret['value'] = name
+    #model_copy = keras.wrappers.scikit_learn.KerasClassifier(build_fn=o)
+    ret['value'] = o().get_config()
+    
+    #a=keras.models.Sequential()
+    #a.add(keras.layers.Reshape((28, 28, 1), input_shape=(784,)))
+    #if(isinstance(a,keras.models.Sequential)):
+    #    ret['value'] = a.get_config()
+    #else:
+    #    ret['value'] = name
+    #return _serialize_sequential_model(a)
+   
+    
     return ret
 
 

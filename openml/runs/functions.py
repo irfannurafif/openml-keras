@@ -11,6 +11,7 @@ import sklearn.pipeline
 import six
 import xmltodict
 import sklearn.metrics
+import keras
 
 import openml
 import openml.utils
@@ -448,7 +449,18 @@ def _run_task_get_arffcontent(model, task):
     for rep_no in range(num_reps):
         for fold_no in range(num_folds):
             for sample_no in range(num_samples):
-                model_fold = sklearn.base.clone(model, safe=True)
+                model_fold={}
+                if(isinstance(model,keras.wrappers.scikit_learn.KerasClassifier)):
+                    model_fold = keras.wrappers.scikit_learn.KerasClassifier(**model.get_params())
+                    #modelkeras=model.build_fn()
+                    #model_fold = keras.models.clone_model(modelkeras)
+                    #model_fold.set_weights(modelkeras.get_weights())
+
+                    #model_fold = keras.wrappers.scikit_learn.KerasClassifier(keras.models.clone_model(model.build_fn()))
+                    #model_fold.set_weights(model.get_weights())
+                    #print(model_fold.get_params())
+                else:
+                    model_fold = sklearn.base.clone(model, safe=True)
                 res =_run_model_on_fold(model_fold, task, rep_no, fold_no, sample_no, can_measure_runtime)
                 arff_datacontent_fold, arff_tracecontent_fold, user_defined_measures_fold, model_fold = res
 

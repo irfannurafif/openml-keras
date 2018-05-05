@@ -281,11 +281,19 @@ class OpenMLRun(object):
 
         def extract_parameters(_flow, _flow_dict, component_model,
                                _main_call=False, main_id=None):
+            #print(component_model)
+            #if('build_fn' in _flow.parameters):
+            #    _flow.parameters['model']=component_model.sk_params['model']
+            
+
             # _flow is openml flow object, _param dict maps from flow name to flow id
             # for the main call, the param dict can be overridden (useful for unit tests / sentinels)
             # this way, for flows without subflows we do not have to rely on _flow_dict
             expected_parameters = set(_flow.parameters)
             expected_components = set(_flow.components)
+            print(expected_parameters)
+            print(expected_components)
+            
             model_parameters = set([mp for mp in component_model.get_params()
                                     if '__' not in mp])
             if len((expected_parameters | expected_components) ^ model_parameters) != 0:
@@ -294,7 +302,7 @@ class OpenMLRun(object):
                                  'flow:\nexpected flow parameters: '
                                  '%s\nmodel parameters: %s' % (
                     sorted(expected_parameters| expected_components), sorted(model_parameters)))
-
+            print('SAFE')
             _params = []
             for _param_name in _flow.parameters:
                 _current = OrderedDict()
