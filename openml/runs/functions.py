@@ -449,6 +449,7 @@ def _run_task_get_arffcontent(model, task):
     for rep_no in range(num_reps):
         for fold_no in range(num_folds):
             for sample_no in range(num_samples):
+                max_acc=0
                 model_fold={}
                 if(isinstance(model,keras.wrappers.scikit_learn.KerasClassifier)):
                     model_fold = keras.wrappers.scikit_learn.KerasClassifier(**model.get_params())
@@ -462,6 +463,17 @@ def _run_task_get_arffcontent(model, task):
                 else:
                     model_fold = sklearn.base.clone(model, safe=True)
                 res =_run_model_on_fold(model_fold, task, rep_no, fold_no, sample_no, can_measure_runtime)
+                
+                print(res[2])
+                if(res[2]['predictive_accuracy']>max_acc):
+                    max_acc=res[2]['predictive_accuracy']
+                    model_tt=res[3]
+                    json_model = model_tt.model.to_json()
+                    open('model_architecture.json', 'w').write(json_model)
+                    # saving weights
+                    model_tt.model.save_weights('model_weights.h5', overwrite=True)
+                    model_tt.model.save('model.h5')
+                    
                 arff_datacontent_fold, arff_tracecontent_fold, user_defined_measures_fold, model_fold = res
 
                 arff_datacontent.extend(arff_datacontent_fold)
@@ -470,6 +482,8 @@ def _run_task_get_arffcontent(model, task):
                 for measure in user_defined_measures_fold:
                     user_defined_measures_per_fold[measure][rep_no][fold_no] = user_defined_measures_fold[measure]
                     user_defined_measures_per_sample[measure][rep_no][fold_no][sample_no] = user_defined_measures_fold[measure]
+
+    print('Max accuracy={}'.format(max_acc))
 
     # Note that we need to use a fitted model (i.e., model_fold, and not model) here,
     # to ensure it contains the hyperparameter data (in cv_results_)
@@ -591,6 +605,7 @@ def _run_model_on_fold(model, task, rep_no, fold_no, sample_no, can_measure_runt
         ProbaY = model.predict_proba(testX)
     except AttributeError:
         ProbaY = _prediction_to_probabilities(PredY, list(model_classes))
+
 
     if can_measure_runtime:
         modelpredict_duration = (time.process_time() - modelpredict_starttime) * 1000
