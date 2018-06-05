@@ -38,6 +38,7 @@ setuptools.setup(name="openml",
                      'numpy>=1.6.2',
                      'scipy>=0.13.3',
                      'keras',
+					 'tensorflow',
                      'liac-arff>=2.2.1',
                      'xmltodict',
                      'nose',
@@ -51,9 +52,7 @@ setuptools.setup(name="openml",
                      'test': [
                          'nbconvert',
                          'jupyter_client'
-                     ],
-                     "tf": ["tensorflow>=1.0.0"],
-                     "tf_gpu": ["tensorflow-gpu>=1.0.0"],
+                     ]
                  },
                  test_suite="nose.collector",
                  classifiers=['Intended Audience :: Science/Research',
