@@ -573,8 +573,8 @@ def _check_n_jobs(model):
                     return False
         return True
     if not (isinstance(model, sklearn.base.BaseEstimator) or
-            isinstance(model, sklearn.model_selection._search.BaseSearchCV)
-            ):
+            isinstance(model, sklearn.model_selection._search.BaseSearchCV)):
+        print(model.__class__)
         raise ValueError('model should be BaseEstimator or BaseSearchCV')
 
     # make sure that n_jobs is not in the parameter grid of optimization procedure

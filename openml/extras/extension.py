@@ -7,8 +7,8 @@ from keras.wrappers.scikit_learn import KerasClassifier
 from openml.flows import OpenMLFlow
 
 def is_extension_model(model):
-    #currently only support keras model. extension={keras, ...}
-    return isinstance(model,keras.wrappers.scikit_learn.KerasClassifier)
+    #currently only support keras model. extension={keras, extensionA, extensionB, ...}
+    return isinstance(model,keras.wrappers.scikit_learn.KerasClassifier) #or isinstance(model,extensionB)
 
 def _is_keras_model(model):
     return isinstance(model,keras.wrappers.scikit_learn.KerasClassifier)
@@ -173,8 +173,8 @@ class KerasClassifierWrapper(sklearn.base.BaseEstimator):
         return isinstance(model,KerasClassifierWrapper)
 
     @staticmethod
-    def _is_keras_function(model):
-        try:
-            return inspect.isfunction(model()) and isinstance(model,keras.models)
-        except:
+    def _is_keras_function(build_fn):
+        if(inspect.isfunction(build_fn) and (isinstance(build_fn(),keras.models.Model or isinstance(build_fn(),keras.models.Sequential)))):
+            pass
+        else:
             raise TypeError("\'build_fn\' must be a function returning Keras model.")
