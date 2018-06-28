@@ -37,15 +37,14 @@ setuptools.setup(name="openml",
                      'mock',
                      'numpy>=1.6.2',
                      'scipy>=0.13.3',
-                     'liac-arff>=2.2.1',
+                     'liac-arff>=2.2.2',
                      'xmltodict',
                      'nose',
                      'requests',
                      'scikit-learn>=0.18',
                      'nbformat',
                      'python-dateutil',
-                     'oslo.concurrency',
-                     'keras'
+                     'oslo.concurrency'
                  ],
                  extras_require={
                      'test': [

@@ -14,7 +14,6 @@ import openml
 import openml._api_calls
 from ..tasks import get_task
 from ..exceptions import PyOpenMLError
-from ..extras import extension
 
 class OpenMLRun(object):
     """OpenML Run: result of running a model on an openml dataset.
@@ -101,7 +100,8 @@ class OpenMLRun(object):
             raise ValueError('Could not find model.pkl')
 
         with open(description_path, 'r') as fp:
-            run = openml.runs.functions._create_run_from_xml(fp.read(), from_server=False)
+            xml_string = fp.read()
+            run = openml.runs.functions._create_run_from_xml(xml_string, from_server=False)
 
         with open(predictions_path, 'r') as fp:
             predictions = arff.load(fp)
@@ -111,10 +111,10 @@ class OpenMLRun(object):
             run.model = pickle.load(fp)
 
         if os.path.isfile(trace_path):
-            with open(trace_path, 'r') as fp:
-                trace = arff.load(fp)
-                run.trace_attributes = trace['attributes']
-                run.trace_content = trace['data']
+            trace_arff = openml.runs.OpenMLRunTrace._from_filesystem(trace_path)
+
+            run.trace_attributes = trace_arff['attributes']
+            run.trace_content = trace_arff['data']
 
         return run
 
@@ -177,7 +177,7 @@ class OpenMLRun(object):
         task = get_task(self.task_id)
         class_labels = task.class_labels
 
-        arff_dict = {}
+        arff_dict = OrderedDict()
         arff_dict['attributes'] = [('repeat', 'NUMERIC'),  # lowercase 'numeric' gives an error
                                    ('fold', 'NUMERIC'),
                                    ('sample', 'NUMERIC'),
@@ -206,7 +206,7 @@ class OpenMLRun(object):
         if len(self.trace_attributes) != len(self.trace_content[0]):
             raise ValueError('Trace_attributes and trace_content not compatible')
 
-        arff_dict = dict()
+        arff_dict = OrderedDict()
         arff_dict['attributes'] = self.trace_attributes
         arff_dict['data'] = self.trace_content
         arff_dict['relation'] = 'openml_task_' + str(self.task_id) + '_predictions'
@@ -252,7 +252,7 @@ class OpenMLRun(object):
             # convenience function: Creates a mapping to map from the name of attributes
             # present in the arff prediction file to their index. This is necessary
             # because the number of classes can be different for different tasks.
-            res = dict()
+            res = OrderedDict()
             for idx in range(len(attribute_list)):
                 res[attribute_list[idx][0]] = idx
             return res
@@ -282,11 +282,11 @@ class OpenMLRun(object):
             prediction = predictions_arff['attributes'][predicted_idx][1].index(line[predicted_idx])
             correct = predictions_arff['attributes'][predicted_idx][1].index(line[correct_idx])
             if rep not in values_predict:
-                values_predict[rep] = dict()
-                values_correct[rep] = dict()
+                values_predict[rep] = OrderedDict()
+                values_correct[rep] = OrderedDict()
             if fold not in values_predict[rep]:
-                values_predict[rep][fold] = dict()
-                values_correct[rep][fold] = dict()
+                values_predict[rep][fold] = OrderedDict()
+                values_correct[rep][fold] = OrderedDict()
             if samp not in values_predict[rep][fold]:
                 values_predict[rep][fold][samp] = []
                 values_correct[rep][fold][samp] = []
@@ -394,7 +394,7 @@ class OpenMLRun(object):
             expected_components = set(_flow.components)
             model_parameters = set([mp for mp in component_model.get_params()
                                     if '__' not in mp])
-            if(not extension.is_extension_model(model) and len((expected_parameters | expected_components) ^ model_parameters) != 0):
+            if(len((expected_parameters | expected_components) ^ model_parameters) != 0):
                 raise ValueError('Parameters of the model do not match the '
                                  'parameters expected by the '
                                  'flow:\nexpected flow parameters: '
@@ -405,11 +405,9 @@ class OpenMLRun(object):
             for _param_name in _flow.parameters:
                 _current = OrderedDict()
                 _current['oml:name'] = _param_name
-                if("layer" in _param_name):
-                    _tmp = openml.flows.sklearn_to_flow(json.loads(_flow.parameters[_param_name]))
-                else:
-                    _tmp = openml.flows.sklearn_to_flow(
-                        component_model.get_params()[_param_name])
+
+                _tmp = openml.flows.sklearn_to_flow(
+                    component_model.get_params()[_param_name])
 
                 # Try to filter out components (a.k.a. subflows) which are
                 # handled further down in the code (by recursively calling
@@ -544,7 +542,7 @@ def _to_dict(taskid, flow_id, setup_string, error_message, parameter_settings,
         description['oml:run']['oml:tag'] = tags  # Tags describing the run
     if (fold_evaluations is not None and len(fold_evaluations) > 0) or \
        (sample_evaluations is not None and len(sample_evaluations) > 0):
-        description['oml:run']['oml:output_data'] = dict()
+        description['oml:run']['oml:output_data'] = OrderedDict()
         description['oml:run']['oml:output_data']['oml:evaluation'] = list()
     if fold_evaluations is not None:
         for measure in fold_evaluations:

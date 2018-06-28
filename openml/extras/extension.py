@@ -1,17 +1,17 @@
-import keras
 import json
 import inspect
 import sklearn.base
 from ..flows.sklearn_converter import sklearn_to_flow, _extract_information_from_model, _check_multiple_occurence_of_component_in_flow, _get_external_version_string, _format_external_version
-from keras.wrappers.scikit_learn import KerasClassifier
 from openml.flows import OpenMLFlow
 
 def is_extension_model(model):
-    #currently only support keras model. extension={keras, extensionA, extensionB, ...}
-    return isinstance(model,keras.wrappers.scikit_learn.KerasClassifier) #or isinstance(model,extensionB)
+    #currently only support keras model. extension={keras, ...}
+    #return isinstance(model,keras.wrappers.scikit_learn.KerasClassifier)
+    return _isinstance_kerasclassifier(model)
 
 def _is_keras_model(model):
-    return isinstance(model,keras.wrappers.scikit_learn.KerasClassifier)
+    return _isinstance_kerasclassifier(model)
+    #return isinstance(model,keras.wrappers.scikit_learn.KerasClassifier)
 
 def extension_to_flow(o):
     if(_is_keras_model(o)):
@@ -20,6 +20,23 @@ def extension_to_flow(o):
 
 def flow_to_extension(o, **kwargs):
     return  # TODO
+
+def _get_class_name(model):
+    return model.__module__+'.'+model.__class__.__name__
+
+def _isinstance_keras(model):
+    _model_name= _get_class_name(model)
+    return _model_name=='keras.engine.training.Model' or _model_name=='keras.engine.sequential.Sequential'
+
+def _isinstance_kerasclassifier(model):
+    _model_name= _get_class_name(model)
+    return _model_name=='keras.wrappers.scikit_learn.KerasClassifier'
+
+def _isinstance_kerassequential(model):
+    return _get_class_name(model)=='keras.engine.sequential.Sequential'
+
+def _isinstance_kerasfunctional(model):
+    return _get_class_name(model)=='keras.engine.training.Model'
 
 def _serialize_extension_model(model):
     """Create an OpenMLFlow.
@@ -102,7 +119,7 @@ def _serialize_extension_model(model):
 
 class KerasClassifierWrapper(sklearn.base.BaseEstimator):
 
-    def __init__(self, build_fn=None, epochs=1,verbose=0,batch_size=1,**kwargs):
+    def __init__(self, build_fn=None, epochs=1,verbose=0,batch_size=1,original_model=None,**kwargs):
         self._is_keras_function(build_fn)
         self.build_fn=build_fn
         self.sk_params={}
@@ -111,7 +128,7 @@ class KerasClassifierWrapper(sklearn.base.BaseEstimator):
         self.sk_params['batch_size']=batch_size
         self.__module__ = 'keras.wrappers.scikit_learn'
         self.__class__.__name__='KerasClassifier'
-        self._keras_wrapper_model_ = keras.wrappers.scikit_learn.KerasClassifier(build_fn=build_fn,epochs=epochs,verbose=verbose,batch_size=batch_size)
+        self._keras_wrapper_model_ = original_model
 
     def get_params(self,deep=True):
         #if(self.build_fn is None):
@@ -120,14 +137,13 @@ class KerasClassifierWrapper(sklearn.base.BaseEstimator):
         else:
             keras_model_config=[]
             keras_model=self._keras_wrapper_model_.build_fn()
-
             params= {'build_fn':self._keras_wrapper_model_.build_fn,
             'batch_size':self._keras_wrapper_model_.sk_params['batch_size'],
             'epochs':self._keras_wrapper_model_.sk_params['epochs'],
             'verbose':self._keras_wrapper_model_.sk_params['verbose']}
-            if(isinstance(keras_model,keras.models.Sequential)):
+            if(_isinstance_kerassequential(keras_model)):
                 keras_model_config=keras_model.get_config()
-            elif(isinstance(keras_model,keras.models.Model)):
+            elif(_isinstance_kerasfunctional(keras_model)):
                 keras_model_config=keras_model.get_config()['layers']
             self.layer=[layer for layer in keras_model_config]
             for layer_id,layer in enumerate(keras_model_config):
@@ -145,7 +161,7 @@ class KerasClassifierWrapper(sklearn.base.BaseEstimator):
                 raise Exception('Cannor set keras layer parameters')
 
     def fit(self, x, y, **kwargs):
-        fitted=self._keras_wrapper_model_.fit(x, y, kwargs)
+        fitted=self._keras_wrapper_model_.fit(x, y)
         self.classes_=self._keras_wrapper_model_.classes_
         return fitted
 
@@ -166,15 +182,20 @@ class KerasClassifierWrapper(sklearn.base.BaseEstimator):
 
     @staticmethod
     def convert_from_sklearn(model):
-        return KerasClassifierWrapper(model.build_fn, model.sk_params['epochs'], model.sk_params['verbose'],model.sk_params['batch_size'])
+        return KerasClassifierWrapper(model.build_fn, model.sk_params['epochs'], model.sk_params['verbose'],model.sk_params['batch_size'],original_model=model)
 
     @staticmethod
     def is_sklearn_wrapper(model):
-        return isinstance(model,KerasClassifierWrapper)
+        #return isinstance(model,KerasClassifierWrapper)
+        return _isinstance_kerasclassifier(model)
 
     @staticmethod
-    def _is_keras_function(build_fn):
-        if(inspect.isfunction(build_fn) and (isinstance(build_fn(),keras.models.Model or isinstance(build_fn(),keras.models.Sequential)))):
-            pass
-        else:
+    def _is_keras_function(model):
+        try:
+            if(inspect.isfunction(model)):
+                _keras_model=model()
+                if(_isinstance_keras(_keras_model)):
+                    return
+            return TypeError("\'build_fn\' must be a function returning Keras model.")
+        except:
             raise TypeError("\'build_fn\' must be a function returning Keras model.")
